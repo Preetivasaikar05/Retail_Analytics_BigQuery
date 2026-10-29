@@ -1,0 +1,18 @@
+config {
+  type: "declaration",
+  schema: "raw_retail",
+  name: "online_retail_raw",
+  description: "Untouched UCI Online Retail II rows, every source column as STRING. Loaded outside Dataform, which only reads it.",
+  columns: {
+    invoice: "Invoice number. Prefix C = cancellation/return, prefix A = bad-debt adjustment.",
+    stock_code: "Product code, or a non-product code such as POST, D, M, BANK CHARGES.",
+    description: "Product description as received.",
+    quantity: "Units on the line (text); negative for returns and stock adjustments.",
+    invoice_date: "Invoice timestamp as text, M/D/YYYY H:MM, no time zone.",
+    price: "Unit price in GBP as text.",
+    customer_id: "Customer id as text, often like 13085.0; empty for guest checkouts.",
+    country: "Customer country as received (EIRE, RSA, Unspecified ...).",
+    _source_file: "Which sheet or file the row came from.",
+    _loaded_at: "Timestamp of the load."
+  }
+}

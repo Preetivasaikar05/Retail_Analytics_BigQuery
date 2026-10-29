@@ -1,0 +1,28 @@
+config {
+  type: "table",
+  schema: "marts" + dataform.projectConfig.vars.schema_suffix,
+  name: "fct_invoices",
+  description: "Grain: one row per invoice, for order-level metrics.",
+  columns: {
+    invoice_no: "Primary key.",
+    net_revenue_amount: "gross_sales_amount minus returns_amount."
+  },
+  assertions: { uniqueKey: ["invoice_no"], nonNull: ["invoice_no", "customer_key"] }
+}
+
+SELECT
+  invoice_no,
+  MIN(invoice_date) AS invoice_date,
+  MIN(invoice_at) AS invoice_at,
+  MIN(customer_key) AS customer_key,
+  MIN(country) AS country,
+  STARTS_WITH(invoice_no, 'C') AS is_cancellation_invoice,
+  COUNT(*) AS line_count,
+  COUNTIF(line_type = 'sale') AS sale_line_count,
+  SUM(IF(line_type = 'sale', quantity, 0)) AS units_sold,
+  SUM(IF(line_type = 'return', ABS(quantity), 0)) AS units_returned,
+  SUM(gross_sales_amount) AS gross_sales_amount,
+  SUM(returns_amount) AS returns_amount,
+  SUM(gross_sales_amount) - SUM(returns_amount) AS net_revenue_amount
+FROM ${ref("fct_sales_lines")}
+GROUP BY invoice_no

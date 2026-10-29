@@ -1,0 +1,63 @@
+config {
+  type: "table",
+  schema: "metrics" + dataform.projectConfig.vars.schema_suffix,
+  name: "metrics_monthly_sales",
+  description: "Governed monthly KPIs. Point dashboards here, not at the facts.",
+  columns: {
+    month: "First day of the month.",
+    gross_sales_amount: "Gross sales in GBP (sale lines only).",
+    returns_amount: "Value of returns (C invoices) in GBP, positive.",
+    net_revenue_amount: "gross_sales_amount minus returns_amount.",
+    orders: "Invoices with at least one sale line.",
+    avg_order_value: "gross_sales_amount / orders.",
+    return_rate: "returns_amount / gross_sales_amount, same month.",
+    active_customers: "Identified customers with an order in the month.",
+    new_customers: "Identified customers whose first order is in the month.",
+    guest_order_share: "Guest orders / orders."
+  },
+  assertions: {
+    uniqueKey: ["month"],
+    nonNull: ["month", "gross_sales_amount", "orders"],
+    rowConditions: ["orders >= 0", "new_customers <= active_customers"]
+  }
+}
+
+WITH invoices AS (
+  SELECT *, DATE_TRUNC(invoice_date, MONTH) AS month
+  FROM ${ref("fct_invoices")}
+),
+monthly AS (
+  SELECT
+    month,
+    SUM(gross_sales_amount) AS gross_sales_amount,
+    SUM(returns_amount) AS returns_amount,
+    SUM(net_revenue_amount) AS net_revenue_amount,
+    COUNTIF(sale_line_count > 0) AS orders,
+    SUM(units_sold) AS units_sold,
+    COUNT(DISTINCT IF(sale_line_count > 0 AND customer_key != ${retail.UNKNOWN_CUSTOMER_KEY}, customer_key, NULL)) AS active_customers,
+    COUNTIF(sale_line_count > 0 AND customer_key = ${retail.UNKNOWN_CUSTOMER_KEY}) AS guest_orders
+  FROM invoices
+  GROUP BY month
+),
+new_customers AS (
+  SELECT DATE_TRUNC(first_order_date, MONTH) AS month, COUNT(*) AS new_customers
+  FROM ${ref("dim_customer")}
+  WHERE is_identified AND first_order_date IS NOT NULL
+  GROUP BY month
+)
+SELECT
+  m.month,
+  m.gross_sales_amount,
+  m.returns_amount,
+  m.net_revenue_amount,
+  m.orders,
+  m.units_sold,
+  SAFE_DIVIDE(m.gross_sales_amount, m.orders) AS avg_order_value,
+  SAFE_DIVIDE(m.returns_amount, m.gross_sales_amount) AS return_rate,
+  m.active_customers,
+  COALESCE(n.new_customers, 0) AS new_customers,
+  m.active_customers - COALESCE(n.new_customers, 0) AS returning_customers,
+  m.guest_orders,
+  SAFE_DIVIDE(m.guest_orders, m.orders) AS guest_order_share
+FROM monthly AS m
+LEFT JOIN new_customers AS n USING (month)

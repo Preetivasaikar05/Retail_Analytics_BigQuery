@@ -1,0 +1,25 @@
+config {
+  type: "table",
+  schema: "marts" + dataform.projectConfig.vars.schema_suffix,
+  name: "dim_product",
+  description: "One row per stock code. Descriptions drift over time, so the latest one is kept and the number of variants is exposed.",
+  columns: {
+    product_key: "Stock code.",
+    product_description: "Most recent non-null description.",
+    description_variant_count: "How many different descriptions this code has carried.",
+    is_non_product: "TRUE for fees, postage, vouchers, samples and bad-debt adjustment codes.",
+    sale_line_count: "Number of lines of type sale."
+  },
+  assertions: { uniqueKey: ["product_key"], nonNull: ["product_key"] }
+}
+
+SELECT
+  stock_code AS product_key,
+  ARRAY_AGG(description IGNORE NULLS ORDER BY invoice_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS product_description,
+  COUNT(DISTINCT description) AS description_variant_count,
+  LOGICAL_OR(line_type IN ('non_product', 'bad_debt_adjustment')) AS is_non_product,
+  MIN(invoice_date) AS first_seen_date,
+  MAX(invoice_date) AS last_seen_date,
+  COUNTIF(line_type = 'sale') AS sale_line_count
+FROM ${ref("int_invoice_lines")}
+GROUP BY stock_code

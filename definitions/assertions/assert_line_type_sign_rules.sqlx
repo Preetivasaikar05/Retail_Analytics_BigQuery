@@ -1,0 +1,9 @@
+config {
+  type: "assertion",
+  description: "Business rules on line signs: sales are positive quantity and price, returns have negative quantity."
+}
+
+SELECT line_key, invoice_no, line_type, quantity, unit_price
+FROM ${ref("fct_sales_lines")}
+WHERE (line_type = 'sale'   AND (quantity <= 0 OR unit_price <= 0))
+   OR (line_type = 'return' AND quantity >= 0)

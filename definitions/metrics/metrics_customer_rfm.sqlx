@@ -1,0 +1,60 @@
+config {
+  type: "table",
+  schema: "metrics" + dataform.projectConfig.vars.schema_suffix,
+  name: "metrics_customer_rfm",
+  description: "RFM scores and segments for identified customers with at least one order. Scores 1-5, 5 is best. NTILE splits ties across buckets, so treat segments as a heuristic.",
+  columns: {
+    customer_key: "Customer id.",
+    recency_days: "Days from the customer's last order to the day after the last invoice in the data.",
+    frequency: "Number of orders.",
+    monetary_net_revenue: "Net revenue in GBP.",
+    segment: "Champions, Loyal, At risk, New / recent, Lapsed or Potential."
+  },
+  assertions: {
+    uniqueKey: ["customer_key"],
+    nonNull: ["customer_key", "r_score", "f_score", "m_score", "segment"],
+    rowConditions: ["r_score BETWEEN 1 AND 5", "f_score BETWEEN 1 AND 5", "m_score BETWEEN 1 AND 5", "recency_days >= 1"]
+  }
+}
+
+WITH as_of AS (
+  SELECT DATE_ADD(MAX(invoice_date), INTERVAL 1 DAY) AS as_of_date
+  FROM ${ref("fct_invoices")}
+),
+customers AS (
+  SELECT
+    i.customer_key,
+    MAX(IF(i.sale_line_count > 0, i.invoice_date, NULL)) AS last_order_date,
+    COUNTIF(i.sale_line_count > 0) AS frequency,
+    SUM(i.net_revenue_amount) AS monetary_net_revenue
+  FROM ${ref("fct_invoices")} AS i
+  WHERE i.customer_key != ${retail.UNKNOWN_CUSTOMER_KEY}
+  GROUP BY i.customer_key
+  HAVING COUNTIF(i.sale_line_count > 0) > 0
+),
+scored AS (
+  SELECT
+    c.customer_key,
+    d.country,
+    c.last_order_date,
+    DATE_DIFF(a.as_of_date, c.last_order_date, DAY) AS recency_days,
+    c.frequency,
+    c.monetary_net_revenue,
+    NTILE(5) OVER (ORDER BY c.last_order_date, c.customer_key) AS r_score,
+    NTILE(5) OVER (ORDER BY c.frequency, c.customer_key) AS f_score,
+    NTILE(5) OVER (ORDER BY c.monetary_net_revenue, c.customer_key) AS m_score
+  FROM customers AS c
+  CROSS JOIN as_of AS a
+  JOIN ${ref("dim_customer")} AS d ON d.customer_key = c.customer_key
+)
+SELECT
+  *,
+  CASE
+    WHEN r_score >= 4 AND f_score >= 4 THEN 'Champions'
+    WHEN f_score >= 4                  THEN 'Loyal'
+    WHEN r_score <= 2 AND f_score >= 3 THEN 'At risk'
+    WHEN r_score >= 4 AND f_score <= 2 THEN 'New / recent'
+    WHEN r_score <= 2                  THEN 'Lapsed'
+    ELSE 'Potential'
+  END AS segment
+FROM scored

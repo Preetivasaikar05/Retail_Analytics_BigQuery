@@ -1,0 +1,32 @@
+config {
+  type: "table",
+  schema: "marts" + dataform.projectConfig.vars.schema_suffix,
+  name: "dim_customer",
+  description: "One row per identified customer plus an Unknown member (key -1) that guest checkouts point to.",
+  columns: {
+    customer_key: "Customer id, or -1 for guests.",
+    country: "Most recent country.",
+    is_identified: "FALSE only for the Unknown member.",
+    first_order_date: "Date of the first sale order.",
+    lifetime_orders: "Distinct sale invoices."
+  },
+  assertions: { uniqueKey: ["customer_key"], nonNull: ["customer_key", "country"] }
+}
+
+WITH identified AS (
+  SELECT
+    customer_id AS customer_key,
+    ARRAY_AGG(country ORDER BY invoice_at DESC LIMIT 1)[OFFSET(0)] AS country,
+    TRUE AS is_identified,
+    MIN(IF(line_type = 'sale', invoice_date, NULL)) AS first_order_date,
+    MAX(IF(line_type = 'sale', invoice_date, NULL)) AS last_order_date,
+    COUNT(DISTINCT IF(line_type = 'sale', invoice_no, NULL)) AS lifetime_orders,
+    COUNT(DISTINCT country) AS country_count
+  FROM ${ref("int_invoice_lines")}
+  WHERE customer_id IS NOT NULL
+  GROUP BY customer_id
+)
+
+SELECT * FROM identified
+UNION ALL
+SELECT ${retail.UNKNOWN_CUSTOMER_KEY}, 'Unknown', FALSE, CAST(NULL AS DATE), CAST(NULL AS DATE), 0, 0

@@ -1,0 +1,35 @@
+config {
+  type: "table",
+  schema: "marts" + dataform.projectConfig.vars.schema_suffix,
+  name: "fct_sales_lines",
+  description: "Grain: one row per invoice line, every line type kept. Partitioned by date, clustered by customer and product.",
+  bigquery: { partitionBy: "invoice_date", clusterBy: ["customer_key", "product_key"] },
+  columns: {
+    line_key: "Primary key.",
+    customer_key: "Foreign key to dim_customer (-1 for guests).",
+    product_key: "Foreign key to dim_product.",
+    date_key: "Foreign key to dim_date.",
+    gross_sales_amount: "line_amount on sale lines, else 0.",
+    returns_amount: "Absolute line_amount on return lines, else 0."
+  },
+  assertions: { uniqueKey: ["line_key"], nonNull: ["line_key", "customer_key", "product_key", "date_key", "line_type"] }
+}
+
+SELECT
+  line_key,
+  invoice_no,
+  CAST(FORMAT_DATE('%Y%m%d', invoice_date) AS INT64) AS date_key,
+  COALESCE(customer_id, ${retail.UNKNOWN_CUSTOMER_KEY}) AS customer_key,
+  stock_code AS product_key,
+  country,
+  line_type,
+  invoice_at,
+  invoice_date,
+  quantity,
+  unit_price,
+  line_amount,
+  IF(line_type = 'sale',   line_amount, 0)      AS gross_sales_amount,
+  IF(line_type = 'return', ABS(line_amount), 0) AS returns_amount,
+  is_repeated_line,
+  _loaded_at
+FROM ${ref("int_invoice_lines")}

@@ -1,0 +1,41 @@
+config {
+  type: "view",
+  schema: "intermediate" + dataform.projectConfig.vars.schema_suffix,
+  name: "int_invoice_lines",
+  description: "Valid invoice lines with a business classification (line_type). Rules are evaluated top to bottom; the first match wins.",
+  columns: {
+    line_amount: "quantity * unit_price (negative for returns).",
+    line_type: "bad_debt_adjustment, non_product, return, stock_adjustment, zero_price, sale or other."
+  },
+  assertions: {
+    uniqueKey: ["line_key"],
+    nonNull: ["line_key", "line_type", "invoice_date"]
+  }
+}
+
+SELECT
+  line_key,
+  invoice_no,
+  stock_code,
+  description,
+  quantity,
+  unit_price,
+  customer_id,
+  country,
+  invoice_at,
+  DATE(invoice_at) AS invoice_date,
+  quantity * unit_price AS line_amount,
+  CASE
+    WHEN STARTS_WITH(invoice_no, 'A') THEN 'bad_debt_adjustment'
+    WHEN ${retail.nonProductCondition("stock_code")} THEN 'non_product'
+    WHEN STARTS_WITH(invoice_no, 'C') THEN 'return'
+    WHEN quantity < 0 THEN 'stock_adjustment'
+    WHEN unit_price = 0 THEN 'zero_price'
+    WHEN quantity > 0 AND unit_price > 0 THEN 'sale'
+    ELSE 'other'
+  END AS line_type,
+  is_repeated_line,
+  _source_file,
+  _loaded_at
+FROM ${ref("stg_online_retail")}
+WHERE is_valid_record

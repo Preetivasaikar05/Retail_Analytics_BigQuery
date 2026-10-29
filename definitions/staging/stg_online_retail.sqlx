@@ -1,0 +1,79 @@
+config {
+  type: "table",
+  schema: "staging" + dataform.projectConfig.vars.schema_suffix,
+  name: "stg_online_retail",
+  description: "Typed, trimmed and standardised invoice lines. Overlapping extracts collapse to one row (latest load wins); bad rows are flagged, not dropped.",
+  columns: {
+    line_key: "Surrogate key: hash of the business columns plus the occurrence number within its source.",
+    invoice_no: "Invoice number.",
+    stock_code: "Upper-cased product code.",
+    description: "Upper-cased description with whitespace collapsed.",
+    quantity: "Units; negative for returns and stock adjustments.",
+    invoice_at: "Invoice timestamp (DATETIME, no time zone).",
+    unit_price: "Unit price in GBP.",
+    customer_id: "Customer id as an integer; NULL for guest checkouts.",
+    country: "Standardised country name.",
+    is_repeated_line: "TRUE when an identical line already appeared earlier in the same source.",
+    is_valid_record: "FALSE when a required field is missing or failed type conversion."
+  },
+  assertions: {
+    uniqueKey: ["line_key"],
+    nonNull: ["line_key", "country"]
+  }
+}
+
+WITH typed AS (
+  SELECT
+    NULLIF(TRIM(invoice), '')                                          AS invoice_no,
+    UPPER(NULLIF(TRIM(stock_code), ''))                                AS stock_code,
+    NULLIF(UPPER(REGEXP_REPLACE(TRIM(description), r'\s+', ' ')), '')  AS description,
+    SAFE_CAST(quantity AS INT64)                                       AS quantity,
+    SAFE.PARSE_DATETIME('%m/%d/%Y %H:%M', invoice_date)                AS invoice_at,
+    SAFE_CAST(price AS NUMERIC)                                        AS unit_price,
+    SAFE_CAST(SAFE_CAST(customer_id AS FLOAT64) AS INT64)              AS customer_id,
+    ${retail.countryExpression("country")}                             AS country,
+    _source_file,
+    _loaded_at
+  FROM ${ref("online_retail_raw")}
+),
+
+numbered AS (
+  SELECT
+    *,
+    ROW_NUMBER() OVER (
+      PARTITION BY _source_file, invoice_no, stock_code, description,
+                   quantity, invoice_at, unit_price, customer_id, country
+    ) AS occurrence_in_source
+  FROM typed
+),
+
+keyed AS (
+  SELECT
+    TO_HEX(MD5(TO_JSON_STRING(STRUCT(
+      invoice_no, stock_code, description, quantity,
+      invoice_at, unit_price, customer_id, country, occurrence_in_source
+    )))) AS line_key,
+    *
+  FROM numbered
+)
+
+SELECT
+  line_key,
+  invoice_no,
+  stock_code,
+  description,
+  quantity,
+  invoice_at,
+  unit_price,
+  customer_id,
+  country,
+  occurrence_in_source > 1 AS is_repeated_line,
+  (invoice_no IS NOT NULL AND stock_code IS NOT NULL AND quantity IS NOT NULL
+   AND invoice_at IS NOT NULL AND unit_price IS NOT NULL) AS is_valid_record,
+  _source_file,
+  _loaded_at
+FROM keyed
+WHERE TRUE
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY line_key ORDER BY _loaded_at DESC, _source_file DESC
+) = 1

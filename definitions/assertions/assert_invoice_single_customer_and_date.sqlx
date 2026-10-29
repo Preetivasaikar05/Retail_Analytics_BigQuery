@@ -1,0 +1,16 @@
+config {
+  type: "assertion",
+  description: "Data expectation: an invoice belongs to one customer, one calendar date and one country. If this fails on the real data, that is a finding - record it and decide how to model it."
+}
+
+SELECT *
+FROM (
+  SELECT
+    invoice_no,
+    COUNT(DISTINCT customer_key) AS customer_keys,
+    COUNT(DISTINCT invoice_date) AS invoice_dates,
+    COUNT(DISTINCT country) AS countries
+  FROM ${ref("fct_sales_lines")}
+  GROUP BY invoice_no
+)
+WHERE customer_keys > 1 OR invoice_dates > 1 OR countries > 1

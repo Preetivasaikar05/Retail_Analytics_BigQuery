@@ -1,0 +1,34 @@
+config {
+  type: "assertion",
+  description: "Invoice-level totals must equal the sum of their lines, and monthly metrics must equal the fact totals. Catches metric drift between layers."
+}
+
+WITH line_totals AS (
+  SELECT invoice_no, SUM(gross_sales_amount) AS gross_sales_amount, SUM(returns_amount) AS returns_amount
+  FROM ${ref("fct_sales_lines")}
+  GROUP BY invoice_no
+),
+
+invoice_mismatch AS (
+  SELECT 'invoice' AS level, i.invoice_no AS id
+  FROM ${ref("fct_invoices")} AS i
+  JOIN line_totals AS l USING (invoice_no)
+  WHERE i.gross_sales_amount != l.gross_sales_amount
+     OR i.returns_amount != l.returns_amount
+),
+
+grand_total AS (
+  SELECT
+    (SELECT SUM(gross_sales_amount) - SUM(returns_amount) FROM ${ref("fct_sales_lines")}) AS fact_net,
+    (SELECT SUM(net_revenue_amount) FROM ${ref("metrics_monthly_sales")}) AS metrics_net
+),
+
+metrics_mismatch AS (
+  SELECT 'metrics_vs_fact' AS level, CAST(fact_net - metrics_net AS STRING) AS id
+  FROM grand_total
+  WHERE fact_net != metrics_net
+)
+
+SELECT * FROM invoice_mismatch
+UNION ALL
+SELECT * FROM metrics_mismatch

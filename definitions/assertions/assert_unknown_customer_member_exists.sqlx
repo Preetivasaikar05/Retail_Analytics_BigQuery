@@ -1,0 +1,9 @@
+config {
+  type: "assertion",
+  description: "dim_customer must contain exactly one Unknown member (key -1), otherwise guest checkouts would lose their dimension row."
+}
+
+SELECT COUNT(*) AS unknown_members
+FROM ${ref("dim_customer")}
+WHERE customer_key = ${retail.UNKNOWN_CUSTOMER_KEY}
+HAVING COUNT(*) != 1

@@ -1,0 +1,26 @@
+config {
+  type: "assertion",
+  description: "Every foreign key in fct_sales_lines must exist in its dimension."
+}
+
+SELECT 'customer_key' AS failed_key, CAST(f.customer_key AS STRING) AS failed_value, COUNT(*) AS row_count
+FROM ${ref("fct_sales_lines")} AS f
+LEFT JOIN ${ref("dim_customer")} AS d ON f.customer_key = d.customer_key
+WHERE d.customer_key IS NULL
+GROUP BY 1, 2
+
+UNION ALL
+
+SELECT 'product_key', f.product_key, COUNT(*)
+FROM ${ref("fct_sales_lines")} AS f
+LEFT JOIN ${ref("dim_product")} AS d ON f.product_key = d.product_key
+WHERE d.product_key IS NULL
+GROUP BY 1, 2
+
+UNION ALL
+
+SELECT 'date_key', CAST(f.date_key AS STRING), COUNT(*)
+FROM ${ref("fct_sales_lines")} AS f
+LEFT JOIN ${ref("dim_date")} AS d ON f.date_key = d.date_key
+WHERE d.date_key IS NULL
+GROUP BY 1, 2

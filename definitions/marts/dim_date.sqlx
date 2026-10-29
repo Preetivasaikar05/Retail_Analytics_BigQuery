@@ -1,0 +1,28 @@
+config {
+  type: "table",
+  schema: "marts" + dataform.projectConfig.vars.schema_suffix,
+  name: "dim_date",
+  description: "One row per calendar day, 2009-2012.",
+  columns: {
+    date_key: "Integer yyyymmdd, e.g. 20110315.",
+    date: "Calendar date.",
+    year_month: "First day of the month.",
+    day_of_week_us: "1 = Sunday ... 7 = Saturday.",
+    is_weekend: "TRUE for Saturday and Sunday."
+  },
+  assertions: { uniqueKey: ["date_key"], nonNull: ["date_key", "date"] }
+}
+
+SELECT
+  CAST(FORMAT_DATE('%Y%m%d', d) AS INT64) AS date_key,
+  d AS date,
+  EXTRACT(YEAR FROM d) AS year,
+  EXTRACT(QUARTER FROM d) AS quarter,
+  EXTRACT(MONTH FROM d) AS month,
+  FORMAT_DATE('%B', d) AS month_name,
+  DATE_TRUNC(d, MONTH) AS year_month,
+  EXTRACT(ISOWEEK FROM d) AS iso_week,
+  EXTRACT(DAYOFWEEK FROM d) AS day_of_week_us,
+  FORMAT_DATE('%A', d) AS day_name,
+  EXTRACT(DAYOFWEEK FROM d) IN (1, 7) AS is_weekend
+FROM UNNEST(GENERATE_DATE_ARRAY(DATE '2009-01-01', DATE '2012-12-31')) AS d

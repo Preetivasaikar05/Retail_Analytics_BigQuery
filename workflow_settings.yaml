@@ -1,0 +1,7 @@
+defaultProject: peerless-voyage-511603-f9
+defaultLocation: us-south1
+defaultDataset: dataform
+defaultAssertionDataset: dataform_assertions
+dataformCoreVersion: 3.0.52
+vars:
+  schema_suffix: ""

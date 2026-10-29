@@ -1,0 +1,8 @@
+config {
+  type: "assertion",
+  description: "Fails if any staged row has a required field that did not parse (bad quantity, date or price). Those rows are excluded downstream, so this is how they get noticed."
+}
+
+SELECT line_key, invoice_no, stock_code, _source_file
+FROM ${ref("stg_online_retail")}
+WHERE NOT is_valid_record
