@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Dataform CLI
+        run: npm install -g @dataform/cli@3.0.71
+      - name: Compile project (syntax, refs, dependency cycles, no BigQuery access needed)
+        run: dataform compile
